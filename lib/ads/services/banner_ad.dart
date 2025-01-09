@@ -21,6 +21,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shimmer/shimmer.dart';
+import '../admob_easy.dart';
 import '../helper/banner_ad_load.dart';
 
 enum CollapseGravity {
@@ -28,31 +29,55 @@ enum CollapseGravity {
   bottom,
 }
 
-class AdMobEasyBanner extends StatefulWidget {
+class AdMobBannerWidget extends StatefulWidget {
   final AdSize adSize;
   final bool isCollapsible;
   final CollapseGravity collapseGravity;
+  final int position;
 
-  const AdMobEasyBanner({
-    super.key,
-    this.adSize = AdSize.banner,
+  const AdMobBannerWidget({
+    Key? key,
+    required this.adSize,
     this.isCollapsible = false,
     this.collapseGravity = CollapseGravity.bottom,
-  });
+    required this.position,
+  }) : super(key: key);
 
   @override
-  State<AdMobEasyBanner> createState() => _AdMobEasyBannerState();
+  State<AdMobBannerWidget> createState() => _AdMobBannerWidgetState();
 }
 
-class _AdMobEasyBannerState extends State<AdMobEasyBanner> {
-  final BannerAdEasyLoad _bannerAd = BannerAdEasyLoad();
+class _AdMobBannerWidgetState extends State<AdMobBannerWidget> {
+  late final BannerAdManager _adManager;
+  BannerAd? _bannerAd;
+
+  @override
+  void initState() {
+    super.initState();
+    _adManager = BannerAdManager();
+    _loadAd();
+  }
+
+  Future<void> _loadAd() async {
+    _bannerAd = await _adManager.getAd(
+      adUnitId: AdmobEasy.instance.bannerAdID,
+      adSize: widget.adSize,
+      position: widget.position,
+      isCollapsible: widget.isCollapsible,
+      collapseGravity: widget.collapseGravity,
+    );
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
-      valueListenable: _bannerAd.isAdLoading,
-      builder: (context, isAdLoading, child) {
-        if (isAdLoading) {
+      valueListenable:
+          _adManager.getLoadingState(widget.adSize, widget.position),
+      builder: (context, isLoading, child) {
+        if (isLoading) {
           return Shimmer.fromColors(
             baseColor: Colors.grey[300]!,
             highlightColor: Colors.grey[100]!,
@@ -61,14 +86,14 @@ class _AdMobEasyBannerState extends State<AdMobEasyBanner> {
               height: widget.adSize.height.toDouble(),
               color: Colors.white,
               alignment: Alignment.topLeft,
-              child: DecoratedBox(
+              child: const DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE88F1A),
-                  borderRadius: const BorderRadius.only(
+                  color: Color(0xFFE88F1A),
+                  borderRadius: BorderRadius.only(
                     bottomRight: Radius.circular(12),
                   ),
                 ),
-                child: const Padding(
+                child: Padding(
                   padding: EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 4,
@@ -87,16 +112,16 @@ class _AdMobEasyBannerState extends State<AdMobEasyBanner> {
           );
         }
 
-        if (_bannerAd.admobBannerAd == null) {
+        if (_bannerAd == null) {
           return const SizedBox.shrink();
         }
 
         return SizedBox(
-          width: _bannerAd.admobBannerAd!.size.width.toDouble(),
-          height: _bannerAd.admobBannerAd!.size.height.toDouble(),
+          width: _bannerAd!.size.width.toDouble(),
+          height: _bannerAd!.size.height.toDouble(),
           child: AdWidget(
-            ad: _bannerAd.admobBannerAd!,
-            key: ValueKey(_bannerAd.admobBannerAd!.hashCode),
+            ad: _bannerAd!,
+            key: ValueKey(_bannerAd.hashCode),
           ),
         );
       },

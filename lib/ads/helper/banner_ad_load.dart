@@ -1,79 +1,60 @@
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import '../../admob_easy.dart';
-import '../utils/admob_easy_logger.dart';
 
-class BannerAdEasyLoad {
-  static final BannerAdEasyLoad _instance = BannerAdEasyLoad._internal();
-  factory BannerAdEasyLoad() => _instance;
-  BannerAdEasyLoad._internal();
+import '../services/banner_ad.dart';
 
-  BannerAd? admobBannerAd;
-  final ValueNotifier<bool> isAdLoading = ValueNotifier(true);
-  String? _customId;
+class BannerAdManager {
+  static final BannerAdManager _instance = BannerAdManager._internal();
+  factory BannerAdManager() => _instance;
+  BannerAdManager._internal();
 
-  // Getter for the actual ad unit ID to use
-  String get _effectiveAdUnitId => _customId ?? AdmobEasy.instance.bannerAdID;
+  final Map<String, BannerAd> _adCache = {};
+  final Map<String, ValueNotifier<bool>> _loadingStates = {};
 
-  // Method to set custom ID
-  void setCustomId(String? customId) {
-    _customId = customId;
+  String _getUniqueKey(AdSize adSize, int position) {
+    return '${adSize.width}x${adSize.height}_$position';
   }
 
-  Future<void> init({
+  Future<BannerAd?> getAd({
+    required String adUnitId,
     required AdSize adSize,
+    required int position,
     required bool isCollapsible,
     required CollapseGravity collapseGravity,
-    String? customId,
   }) async {
-    // Set custom ID if provided
-    setCustomId(customId);
+    final String key = _getUniqueKey(adSize, position);
 
-    if (!AdmobEasy.instance.isConnected.value ||
-        (_customId?.isEmpty ??
-            false && AdmobEasy.instance.bannerAdID.isEmpty)) {
-      AdmobEasyLogger.error(
-          'Banner ad cannot load: No valid ad unit ID available');
-      isAdLoading.value = false;
-      return;
+    if (!_loadingStates.containsKey(key)) {
+      _loadingStates[key] = ValueNotifier(true);
     }
 
-    _loadBannerAd(
-      adSize: adSize,
-      isCollapsible: isCollapsible,
-      collapseGravity: collapseGravity,
-    );
-  }
+    if (_adCache.containsKey(key)) {
+      return _adCache[key];
+    }
 
-  void _loadBannerAd({
-    required AdSize adSize,
-    required bool isCollapsible,
-    required CollapseGravity collapseGravity,
-  }) {
-    isAdLoading.value = true;
-    admobBannerAd?.dispose();
-
-    admobBannerAd = BannerAd(
-      adUnitId: _effectiveAdUnitId,
+    final BannerAd bannerAd = BannerAd(
+      adUnitId: adUnitId,
+      size: adSize,
       request: AdRequest(
         extras: isCollapsible ? {"collapsible": collapseGravity.name} : null,
       ),
-      size: adSize,
       listener: BannerAdListener(
         onAdLoaded: (ad) {
-          admobBannerAd = ad as BannerAd;
-          isAdLoading.value = false;
+          _adCache[key] = ad as BannerAd;
+          _loadingStates[key]?.value = false;
         },
         onAdFailedToLoad: (ad, error) {
-          AdmobEasyLogger.error("Failed to load ad ${error.message}");
           ad.dispose();
-          admobBannerAd = null;
-          isAdLoading.value = false;
-          // Retry loading the ad after some delay
+          _adCache.remove(key);
+          _loadingStates[key]?.value = false;
+
+          // Retry after delay
           Future.delayed(
             const Duration(seconds: 10),
-            () => _loadBannerAd(
+            () => getAd(
+              adUnitId: adUnitId,
               adSize: adSize,
+              position: position,
               isCollapsible: isCollapsible,
               collapseGravity: collapseGravity,
             ),
@@ -82,11 +63,29 @@ class BannerAdEasyLoad {
       ),
     );
 
-    admobBannerAd!.load();
+    try {
+      await bannerAd.load();
+      _adCache[key] = bannerAd;
+      return bannerAd;
+    } catch (e) {
+      _loadingStates[key]?.value = false;
+      return null;
+    }
   }
 
-  Future<void> dispose() async {
-    admobBannerAd?.dispose();
-    isAdLoading.dispose();
+  ValueNotifier<bool> getLoadingState(AdSize adSize, int position) {
+    final String key = _getUniqueKey(adSize, position);
+    return _loadingStates[key] ?? ValueNotifier(true);
+  }
+
+  void dispose() {
+    for (var ad in _adCache.values) {
+      ad.dispose();
+    }
+    _adCache.clear();
+    for (var loadingState in _loadingStates.values) {
+      loadingState.dispose();
+    }
+    _loadingStates.clear();
   }
 }
