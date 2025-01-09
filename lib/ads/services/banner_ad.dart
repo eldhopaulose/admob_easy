@@ -18,11 +18,10 @@
  ********************************************************************************
  */
 
-import 'package:admob_easy/ads/admob_easy.dart';
-import 'package:admob_easy/ads/utils/admob_easy_logger.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shimmer/shimmer.dart';
+import '../helper/banner_ad_load.dart';
 
 enum CollapseGravity {
   top,
@@ -46,70 +45,12 @@ class AdMobEasyBanner extends StatefulWidget {
 }
 
 class _AdMobEasyBannerState extends State<AdMobEasyBanner> {
-  BannerAd? _admobBannerAd;
-  final ValueNotifier<bool> _isAdLoading = ValueNotifier(true);
-
-  @override
-  void initState() {
-    super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    if (!AdmobEasy.instance.isConnected.value ||
-        AdmobEasy.instance.bannerAdID.isEmpty) {
-      AdmobEasyLogger.error('Banner ad cannot load');
-      _isAdLoading.value = false; // Set loading to false if ad cannot load
-      return;
-    }
-
-    _loadBannerAd();
-  }
-
-  void _loadBannerAd() {
-    _isAdLoading.value = true;
-
-    _admobBannerAd?.dispose();
-    _admobBannerAd = BannerAd(
-      adUnitId: AdmobEasy.instance.bannerAdID,
-      request: AdRequest(
-        extras: widget.isCollapsible
-            ? {"collapsible": widget.collapseGravity.name}
-            : null,
-      ),
-      size: widget.adSize,
-      listener: BannerAdListener(
-        onAdLoaded: (ad) {
-          if (mounted) {
-            _admobBannerAd = ad as BannerAd;
-            _isAdLoading.value = false;
-          }
-        },
-        onAdFailedToLoad: (ad, error) {
-          AdmobEasyLogger.error("Failed to load ad ${error.message}");
-          ad.dispose();
-          _admobBannerAd = null;
-          _isAdLoading.value = false;
-          // Retry loading the ad after some delay
-          Future.delayed(const Duration(seconds: 10), _loadBannerAd);
-        },
-      ),
-    );
-
-    _admobBannerAd!.load();
-  }
-
-  @override
-  void dispose() {
-    _admobBannerAd?.dispose();
-    _isAdLoading.dispose();
-    super.dispose();
-  }
+  final BannerAdEasyLoad _bannerAd = BannerAdEasyLoad();
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
-      valueListenable: _isAdLoading,
+      valueListenable: _bannerAd.isAdLoading,
       builder: (context, isAdLoading, child) {
         if (isAdLoading) {
           return Shimmer.fromColors(
@@ -122,13 +63,13 @@ class _AdMobEasyBannerState extends State<AdMobEasyBanner> {
               alignment: Alignment.topLeft,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Color(0xFFE88F1A),
-                  borderRadius: BorderRadius.only(
+                  color: const Color(0xFFE88F1A),
+                  borderRadius: const BorderRadius.only(
                     bottomRight: Radius.circular(12),
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 4,
                   ),
@@ -146,19 +87,16 @@ class _AdMobEasyBannerState extends State<AdMobEasyBanner> {
           );
         }
 
-        if (_admobBannerAd == null) {
-          // Return empty container if ad failed to load and is not available
+        if (_bannerAd.admobBannerAd == null) {
           return const SizedBox.shrink();
         }
 
         return SizedBox(
-          width: _admobBannerAd!.size.width.toDouble(),
-          height: _admobBannerAd!.size.height.toDouble(),
+          width: _bannerAd.admobBannerAd!.size.width.toDouble(),
+          height: _bannerAd.admobBannerAd!.size.height.toDouble(),
           child: AdWidget(
-            ad: _admobBannerAd!,
-            key: ValueKey(
-              _admobBannerAd!.hashCode,
-            ), // Ensure the widget is unique
+            ad: _bannerAd.admobBannerAd!,
+            key: ValueKey(_bannerAd.admobBannerAd!.hashCode),
           ),
         );
       },
